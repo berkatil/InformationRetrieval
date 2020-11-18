@@ -32,7 +32,7 @@ def levenshtein(word1,word2,is_damerau):
                 needed_operations = operation_matrix[i][j-1] + f'insert {word1[j-1]}, '
             elif min_operation == delete + 1: # deletion is local optimum
                 needed_operations = operation_matrix[i-1][j] + f'delete {word2[i-1]}, '
-            elif (is_damerau) & (i > 1) & (j > 1) & (min_operation == matrix[i-2][j-2] + 1): # Damerau*levenshtein is used and transpose is local optimal
+            elif (is_damerau) & (i > 1) & (j > 1) & (min_operation == matrix[i-2][j-2] + 1): # Damerau-levenshtein is used and transpose is local optimal
                 needed_operations = operation_matrix[i-2][j-2] + f'transpose {word2[i-2]} and {word2[i-1]}, '
             elif word1[j-1] == word2[i-1]: # copy is local optimum
                 needed_operations = operation_matrix[i-1][j-1] + f'copy {word2[i-1]}, '
