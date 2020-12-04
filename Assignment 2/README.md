@@ -10,4 +10,4 @@ The system requires to install python3. In order to run the queries, you need 2 
 
 - your_query can be either a single word like ban or wildcard query like ban*. After that you will see the IDs of documents that contain your query in the ascending order.
 
-*Note that* if you give a wildcard query you should give it in quotes like "ban*".
+**Note that** if you give a wildcard query you should give it in quotes like "ban*".
