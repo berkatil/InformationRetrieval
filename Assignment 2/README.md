@@ -1,6 +1,6 @@
 # InformationRetrieval - Assignment 2
 
-The system requires to install python3. In order to run the queries, you need 2 steps.
+The system requires to install python3. Also, there should be a txt file called "stopwords.txt" which contains the stop words. In order to run the queries, you need 2 steps.
 
 1. You need to run the prep.py code with the following command : python3 prep.py data_folder_path
 
