@@ -20,20 +20,22 @@ def levenshtein(word1,word2,is_damerau):
             copy = matrix[i-1][j-1] # cost if we decide to do copy or replace
             delete = matrix[i-1][j] # cost if we decide to do deletion
             insert = matrix[i][j-1] # cost if we decide to do insertion
+            damerau = False
 
             if word1[j-1] == word2[i-1]: # we can do copy
                 min_operation  = min(insert + 1 ,delete + 1, copy)
             else: min_operation = min(insert + 1 ,delete + 1, copy + 1)
 
-            if (is_damerau) & (i > 1) & (j > 1) & (word1[j-2] == word2[i-1]) & (word1[j-1] == word2[i-2]): # check if it is Damerau-Levenshtein
-                min_operation = min(min_operation, matrix[i-2][j-2] + 1)
-
-            if min_operation == insert + 1: # insertion is local optimum
+            if (is_damerau) & (i > 1) & (j > 1) & (word1[j-2] == word2[i-1]) & (word1[j-1] == word2[i-2]) & ((matrix[i-2][j-2] + 1) < min_operation): # check if it is Damerau-Levenshtein
+                min_operation = matrix[i-2][j-2] + 1
+                damerau = True
+            
+            if damerau: # Damerau-levenshtein is used and transpose is local optimal
+                needed_operations = operation_matrix[i-2][j-2] + f'transpose {word2[i-2]} and {word2[i-1]}, '
+            elif min_operation == insert + 1: # insertion is local optimum
                 needed_operations = operation_matrix[i][j-1] + f'insert {word1[j-1]}, '
             elif min_operation == delete + 1: # deletion is local optimum
                 needed_operations = operation_matrix[i-1][j] + f'delete {word2[i-1]}, '
-            elif (is_damerau) & (i > 1) & (j > 1) & (min_operation == matrix[i-2][j-2] + 1): # Damerau-levenshtein is used and transpose is local optimal
-                needed_operations = operation_matrix[i-2][j-2] + f'transpose {word2[i-2]} and {word2[i-1]}, '
             elif word1[j-1] == word2[i-1]: # copy is local optimum
                 needed_operations = operation_matrix[i-1][j-1] + f'copy {word2[i-1]}, '
             else: # replacement is local optimum

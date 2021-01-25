@@ -1,12 +1,11 @@
 import requests,re, string, math, sys, pickle, json
 from collections import Counter
 
-
 punctuations = list(string.punctuation)
 punc_unicodes = {ord(i): ord(' ') for i in string.punctuation}
 
-def cosine_similarity(vector1,vector2):
-    nominator = sum(p1 * p2 for p1, p2 in zip(vector1,vector2))
+def cosine_similarity(vector1,vector2): # to calculate cosine similarity between 2 vectors
+    nominator = sum(p1 * p2 for p1, p2 in zip(vector1,vector2)) # dot product
 
     length1 = math.sqrt(sum(p*p for p in vector1))
     length2 = math.sqrt(sum(p*p for p in vector2))
@@ -34,10 +33,10 @@ def get_authors(data):
 
 def get_description(data):
     return re.findall(r"descriptionContainer.*?freeTextContainer.*?freeText.*?>(.*?)</span>\n", data.text,re.DOTALL)[0].strip()
-
-def get_rec_book_urls(data):#ground truth # think about this because from here we can only get first author
-     rec_books = re.findall(r'<li class=\'cover\' id=\'bookCover.*?href="(.*?)">',data.text,re.DOTALL)
-     return rec_books
+   
+def get_rec_book_urls(data):
+    rec_books = re.findall(r'<li class=\'cover\' id=\'bookCover.*?href="(.*?)">',data.text,re.DOTALL)
+    return rec_books
 
 def get_genres(data):
     genres = re.findall(r'class="actionLinkLite bookPageGenreLink" href=.*?>(.*?)</a>',data.text,re.DOTALL)
@@ -46,19 +45,19 @@ def get_genres(data):
 def pre_process(document):
     text = document.replace('\n',' ')
     text = text.lower()
-    text = text.translate(punc_unicodes)
+    text = text.translate(punc_unicodes) # discard punctuations
     return text.split(' ')
 
-def select_informative_words(all_words_occurences):#takes a dict which contains all of the words and their document frequencies
-    min_threshold = 10
-    max_threshold = 1700
+def select_informative_words(all_words_occurences, corpus_size):#takes a dict which contains all of the words and their document frequencies
+    min_threshold = int(0.006*corpus_size)
+    max_threshold = int(0.9*corpus_size)
     
     vocabulary = dict()
 
     for key in all_words_occurences:
-        if (all_words_occurences[key]<max_threshold) and (all_words_occurences[key]>min_threshold):
+        if (all_words_occurences[key] < max_threshold) and (all_words_occurences[key] > min_threshold):
             vocabulary[key] = all_words_occurences[key]
-
+    
     return vocabulary
 
 def recommend(book_url, book_tfidf, book_genre, all_tfidfs, all_genre_vectors, index_url, alfa):
@@ -70,21 +69,24 @@ def recommend(book_url, book_tfidf, book_genre, all_tfidfs, all_genre_vectors, i
 
         cos_similiarities.append((index, alfa*desc_sim + (1-alfa)*genre_sim))
 
-    sorted_cos_sim = sorted(cos_similiarities,key = lambda x: x[1],reverse=True)
+    sorted_cos_sim = sorted(cos_similiarities,key = lambda x: x[1],reverse=True)# sort documents according to cosine similarities
 
-    pot_recommendations = sorted_cos_sim[:19]# get 19 in case of the first one is the url itself    
+    if len(sorted_cos_sim) >= 19 :
+        pot_recommendations = sorted_cos_sim[:19]# get 19 in case of the first one is the url itself    
+    else:
+        pot_recommendations = sorted_cos_sim
 
     first_index = str(pot_recommendations[0][0])
-    
-    if book_url == index_url[first_index]:
+   
+    if (first_index in index_url) and (book_url == index_url[first_index]):
         pot_recommendations = pot_recommendations[1:]
-    else: pot_recommendations = pot_recommendations[:18]
+    elif len(sorted_cos_sim) >= 18: pot_recommendations = pot_recommendations[:18]
 
     rec_urls = [index_url[str(rec[0])] for rec in pot_recommendations]
     
     return rec_urls
 
-def single_book_genre(all_genres, doc):
+def single_book_genre(all_genres, doc): # create genre document for a single url
     bin_term_vector = []
 
     for genre in all_genres:
@@ -95,11 +97,10 @@ def single_book_genre(all_genres, doc):
 
     return bin_term_vector
 
-def single_book_tfidf(vocabulary, all_words_occurences, doc, N):
+def single_book_tfidf(vocabulary, all_words_occurences, doc, N): # create description for a single url
     occurences = Counter(doc)
     tf_vector = []
     idf_vector = []
-
 
     for word in vocabulary:
         if word in occurences:
@@ -123,12 +124,15 @@ def evaluate(recommendations, ground_truth):
     prec = precision(recommendations,ground_truth)
     total_relevant = 0
     total_prec = 0
-    for index in range(len(recommendations)):
+    for index in range(len(recommendations)): # to calculate average precision
         if(recommendations[index] in ground_truth):
             total_relevant += 1
             total_prec += precision(recommendations[:index+1],ground_truth)
     
-    return prec, total_prec/total_relevant
+    avg_prec = 0
+    if total_relevant !=0 : avg_prec = total_prec/total_relevant
+
+    return prec, avg_prec
 
 def get_tfidf_vectors(documents):# list of list each element is a document containng only tokens
     all_words_occurences = dict() # store number of documents that contain the word for each word. This is for IDF
@@ -140,21 +144,21 @@ def get_tfidf_vectors(documents):# list of list each element is a document conta
             else:
                 all_words_occurences[word] = 1
 
-    vocabulary = select_informative_words(all_words_occurences)
+    vocabulary = select_informative_words(all_words_occurences, len(documents)) # discard some words
 
     N = len(documents)
 
     tf_idf_vectors = []
 
-    voc_file = open('vocabulary.pickle', 'ab') 
-    pickle.dump(vocabulary, voc_file)                      
+    voc_file = open('vocabulary.json', 'w') 
+    json.dump(vocabulary, voc_file)                      
     voc_file.close()
 
-    all_word_file = open('all_word_occurences.pickle', 'ab') 
-    pickle.dump(all_words_occurences, all_word_file)                      
+    all_word_file = open('all_word_occurences.json', 'w') 
+    json.dump(all_words_occurences, all_word_file)                      
     all_word_file.close()
     
-    for doc in documents:
+    for doc in documents:# calculate tf-idf vectors
         tf_vector = []
         idf_vector = []
         occurences = Counter(doc)
@@ -186,7 +190,7 @@ def get_genre_vectors(documents):
     pickle.dump(all_genres, genre_file)                      
     genre_file.close()
 
-    for doc in documents:
+    for doc in documents:# create genre vectors
         bin_term_vector = []
 
         for genre in all_genres:
@@ -225,7 +229,6 @@ def get_documents(file_path='', url = ''):
                     url_title_author[line] = f'{title} -> {authors}'
                     index_url[index] = line
                     index += 1
-                    print(index)
                     is_retrieved = True
                 
                 except:
@@ -255,7 +258,7 @@ def get_documents(file_path='', url = ''):
         pickle.dump(descriptions, descs)                      
         descs.close()
 
-        genre_content = open('genres.pickle', 'ab') #descriptions
+        genre_content = open('genres.pickle', 'ab') #genres
         pickle.dump(genres, genre_content)                      
         genre_content.close()
 
@@ -263,33 +266,33 @@ def get_documents(file_path='', url = ''):
         doc_file = open('document_vectors.pickle', 'rb') # tfidfs
         documents =  pickle.load(doc_file)
         doc_file.close()
-
+        
         genre_file = open('genre_vectors.pickle', 'rb') # genre vectors
         genre_vectors = pickle.load(genre_file)                      
         genre_file.close()
-        
-        url_index_file = open('index_url.json','rb')
+       
+        url_index_file = open('index_url.json','rb') # index->url dictionary
         index_url = json.load(url_index_file)                    
         url_index_file.close()
-
-        url_title_file = open('url_title_author.json','rb')
+        
+        url_title_file = open('url_title_author.json','rb') # url-> title-author dictionary
         url_title_author = json.load(url_title_file)                    
         url_title_file.close()
-
-        voc_file = open('vocabulary.pickle', 'rb') # all terms in the corpus
-        vocabulary = pickle.load(voc_file)                      
+       
+        voc_file = open('vocabulary.json', 'rb') # all terms in the corpus
+        vocabulary = json.load(voc_file)                      
         voc_file.close()
-
-        all_word_file = open('all_word_occurences.pickle', 'rb') # inverse term freq
-        all_words_occurences = pickle.load(all_word_file)                      
+        
+        all_word_file = open('all_word_occurences.json', 'rb') # inverse term freq
+        all_words_occurences = json.load(all_word_file)                      
         all_word_file.close()
-
+        
         genre_file = open('all_genres.pickle', 'rb') #vocab for all genres
         all_genres = pickle.load(genre_file)                      
         genre_file.close()
-        
+       
         data = requests.get(url)
-
+        
         authors = get_authors(data)
         description = get_description(data)
         title = get_title(data)
@@ -313,10 +316,10 @@ def get_documents(file_path='', url = ''):
 
         print('Precision',prec)
         print('Average Precision',AP)
-    
-
+        return prec,AP
     else:
         print('There is something wrong')
+
 
 filepath = sys.argv[1]
 if '.txt' in filepath:
