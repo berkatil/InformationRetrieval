@@ -34,27 +34,122 @@ def pre_process(data):
 
     return splitted_data
 
-def mult_naive_bayes_train(train_legitimate, train_spam, alpha = 0):
-    leg_word_probs = {}
-    spam_word_probs = {}
+def get_mutual_info(train_legitimate, train_spam):
+    total_doc = len(train_legitimate) + len(train_spam)
+    all_words = set()
+
+    word_idf_leg = dict() # store number of legitimate documents that contain the word for each word.
+    word_idf_spam = dict() # store number of spam documents that contain the word for each word.
+
+    for doc in train_legitimate: # create doc freq for legitimate documents
+        for word in set(doc):
+            all_words.add(word)
+            if word in word_idf_leg:
+                word_idf_leg[word] +=1
+            else:
+                word_idf_leg[word] = 1
+    
+    for doc in train_spam: # create doc freq for spam documents
+        for word in set(doc):
+            all_words.add(word)
+
+            if word in word_idf_spam:
+                word_idf_spam[word] +=1
+            else:
+                word_idf_spam[word] = 1
+    
+    informativeness = dict()
+    
+    for word in all_words:
+        info = 0
+        
+        if word not in word_idf_spam: word_idf_spam[word] = 0 # it does not occur so add it with 0 to avoid errors
+        if word not in word_idf_leg: word_idf_leg[word] = 0 # it does not occur so add it with 0 to avoid errors
+
+        #joint probabilities
+        pw_1c_1 = word_idf_spam[word] / total_doc
+        pw_1c_0 = word_idf_leg[word] / total_doc
+        pw_0c_1 = (len(train_spam) - word_idf_spam[word]) / total_doc
+        pw_0c_0 =  (len(train_legitimate) - word_idf_leg[word]) / total_doc
+
+        # word existence probabilities
+        pw_1 = (word_idf_spam[word] + word_idf_leg[word]) / total_doc
+        pw_0 = 1 - pw_1
+
+        # class probabilities
+        pc_1 = len(train_spam) / total_doc
+        pc_0 = len(train_legitimate) / total_doc
+       
+        if pw_1c_1 != 0:
+            info +=  pw_1c_1 * math.log(pw_1c_1 / (pw_1 * pc_1)) # word 1, class 1(spam)
+        if pw_0c_1 != 0:
+            info +=  pw_0c_1 * math.log(pw_0c_1 / (pw_0 * pc_1)) # word 0, class 1
+        if pw_1c_0 != 0:
+            info +=  pw_1c_0 * math.log(pw_1c_0 / (pw_1 * pc_0)) # word 1, class 0(legitimate)
+        if pw_0c_0 != 0:
+            info +=  pw_0c_0 * math.log(pw_0c_0 / (pw_0 * pc_0)) # word 0, class 0
+
+        informativeness[word] = info
+    
+    return informativeness
+
+def get_vocab_both_class(train_legitimate, train_spam, vocab_size = -1):
+    """
+    If vocab size is -1, it means use all words, otherwise use mutual information and select that many words
+    """
 
     whole_legitimate = []
-
     for mail in train_legitimate:
         whole_legitimate += mail
 
     whole_spam = []   
     for mail in train_spam:
         whole_spam += mail
+
+    if vocab_size == -1:    
+        leg_size = len(whole_legitimate)
+        spam_size = len(whole_spam)
+        legitimate_occ = Counter(whole_legitimate)
+        spam_occ = Counter(whole_spam)
     
-    leg_size = len(whole_legitimate)
-    spam_size = len(whole_spam)
-    legitimate_occ = Counter(whole_legitimate)
-    spam_occ = Counter(whole_spam)
+        vocab = set(legitimate_occ.keys()).union(set(spam_occ.keys()))
 
-    vocab = set(legitimate_occ.keys()).union(set(spam_occ.keys()))
+        return leg_size, spam_size, legitimate_occ, spam_occ, vocab
+    else:
+        mutual_info = get_mutual_info(train_legitimate, train_spam)
+        sorted_tuples = sorted(mutual_info.items(), key=lambda item: item[1], reverse = True)
+        new_vocab_tuples = sorted_tuples[:vocab_size]
+        new_vocab = set([x[0] for x in new_vocab_tuples])
+
+        whole_legitimate = []
+        for mail in train_legitimate:
+            whole_legitimate += mail
+
+        whole_spam = []   
+        for mail in train_spam:
+            whole_spam += mail
+        
+        filtered_whole_legitimate = [word for word in whole_legitimate if word in new_vocab]
+        filtered_whole_spam = [word for word in whole_spam if word in new_vocab]
+
+        leg_size = len(filtered_whole_legitimate)
+        spam_size = len(filtered_whole_spam)
+        legitimate_occ = Counter(filtered_whole_legitimate)
+        spam_occ = Counter(filtered_whole_spam)
+        
+        return leg_size, spam_size, legitimate_occ, spam_occ, new_vocab
+
+def mult_naive_bayes_train(train_legitimate, train_spam, vocab_size = -1, alpha = 1):
+    """
+    If vocab size is -1, it means use all words, otherwise use mutual information and select that many words
+    """
+
+    leg_word_probs = {}
+    spam_word_probs = {}
+
+    leg_size, spam_size, legitimate_occ, spam_occ, vocab = get_vocab_both_class(train_legitimate, train_spam, vocab_size)
     vocab_size = len(vocab)
-
+    
     for token in vocab:
         leg_word_probs[token] = (legitimate_occ[token] + alpha) / (leg_size + alpha * vocab_size) # prob with laplace smoothing
         spam_word_probs[token] = (spam_occ[token] + alpha) / (spam_size + alpha * vocab_size)
@@ -140,7 +235,7 @@ for file_path in os.listdir(f'{test_folder}/spam'):
     data = data[8:] # discard Subject:
     test_spam.append(pre_process(data))
 
-leg_word_probs, spam_word_probs = mult_naive_bayes_train(train_legitimate, train_spam, 1)
+leg_word_probs, spam_word_probs = mult_naive_bayes_train(train_legitimate, train_spam, 100)
 
 legitimate_labels, spam_labels = mult_naive_bayes_test(test_legitimate, test_spam, leg_word_probs, spam_word_probs)
 
